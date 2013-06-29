@@ -33,9 +33,8 @@ var log = lumber.NewConsoleLogger(lumber.TRACE)
 //Returns channel to send audio streams on and a channel that sends nil on finished
 func Init(control <-chan bool) (chan<- AudioStream){
 	
-	//Create channel (allow two stream buffer)
-	//Must be closed by caller
-	stream := make(chan AudioStream)
+	//Create Stream channel
+	stream := make(chan AudioStream,1) //Allow buffer of one for overlap
 	
 	go start(stream,control)
 
@@ -95,7 +94,8 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 	//Close device after last stream
 	alsa_close(device.pcm)
 	
-	log.Trace("Session ended")
+	
+	log.Trace("ALSA session ended")
 }
 
 //Returns when loop should break or continue (True: continue False: break)

@@ -10,9 +10,7 @@ package alsa
 	#include <stdint.h>
 	#include <libgen.h>
 
-
-	
-
+	//Function is much easier to just to do C...would look cleaner in Go
 	snd_pcm_t * alsa_open(char *dev, int rate, int channels)
 	{
 		snd_pcm_hw_params_t *hwp;
