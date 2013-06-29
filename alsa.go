@@ -3,6 +3,7 @@ package alsa
 //Go Packages
 import(
 	"errors"
+	"github.com/jcelliott/lumber"
 )
 
 /*
@@ -19,10 +20,17 @@ type AudioStream struct{
 }
 
 /*
+	Global Variables
+*/
+
+//Global logger (Change to adjust output..."Trace" maybe?)
+var log = lumber.NewConsoleLogger(lumber.TRACE)
+
+/*
 	Functions
 */
 
-//Returns channel to send audio streams on
+//Returns channel to send audio streams on and a channel that sends nil on finished
 func Init(control <-chan bool) (chan<- AudioStream){
 	
 	//Create channel (allow two stream buffer)
@@ -31,7 +39,7 @@ func Init(control <-chan bool) (chan<- AudioStream){
 	
 	go start(stream,control)
 
-	return stream
+	return stream 
 }
 
 //Plays by default..send false on control chan to stop
@@ -39,29 +47,71 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 	
 	var device alsa_device
 	
-	//End on close of stream chan
-	for stream := range streamChan{
-		//Create alsa device (will use existing if suitable)
-		err := configDevice(&device,&stream)
-		if err != nil{
-			//fmt.Println("error configuring alsa device") Write to STDERR maybe?
-		}
-		
-		//Delete alsa device
-		defer alsa_close(device.pcm)
-							
-		//Play all data in this stream
-		for data := range stream.DataStream{
-			select{
-				case shouldPlay := <-control:
-					for !shouldPlay{
-						shouldPlay = <-control //Blocking
+	//Stream loop...end on close of stream
+	STREAM:
+	for{
+		select {
+		case stream,ok := <-streamChan:
+			//Check if streamChan closed
+			if ok == false{
+				break STREAM
+			}
+			
+			//Configure ALSA device (will use existing device if possible)
+			err := configDevice(&device,&stream)
+			if err != nil{
+				log.Error("error configuring alsa device")
+			}
+			
+			//Play all data in this stream
+			DATA:
+			for{
+				select {
+				case data,ok := <-stream.DataStream:
+					//Check if data stream closed
+					if ok == false{
+						log.Trace("Track ended")
+						break DATA
 					}
-				default:
+		
+					//Write data to device
 					alsa_write(&device,data)
+					
+				case msg,ok := <-control:
+					if !handleControlMessage(msg,ok,control){
+						log.Trace("Control chan Closed: mid data stream")
+						break STREAM //Rash but probably safe
+					}
+				}
+			}
+		case msg,ok := <-control:
+			if !handleControlMessage(msg,ok,control){
+				log.Trace("Control chan closed")
+				break STREAM //Rash but probably safe
 			}
 		}
 	}
+	
+	//Close device after last stream
+	alsa_close(device.pcm)
+	
+	log.Trace("Session ended")
+}
+
+//Returns when loop should break or continue (True: continue False: break)
+func handleControlMessage(msg,ok bool, control <-chan bool)(bool){
+	if ok == false{
+		return false
+	}
+	
+	//Stall until play given
+	for !msg{
+		msg,ok = <-control //Blocking
+		if ok == false{
+			return false
+		}
+	}
+	return true //clear to proceed
 }
 
 func configDevice(device *alsa_device, stream *AudioStream)(error){
@@ -69,7 +119,7 @@ func configDevice(device *alsa_device, stream *AudioStream)(error){
 	//Only make new device if one doesn't exist or for different chan_num or rate value
 	if device==nil || device.channels != stream.Channels || device.rate != stream.Rate{
 		if device.pcm != nil{
-			defer alsa_close(device.pcm)
+			alsa_close(device.pcm)
 		}
 		
 		device.channels = stream.Channels

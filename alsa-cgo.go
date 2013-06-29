@@ -160,7 +160,7 @@ type alsa_device struct{
 //For future use
 type SampleType uint
 const(
-	_ SampleType = iota
+	_ SampleType = iota // Leave 0 blank for error checking
 	INT16_TYPE
 	UINT16_TYPE
 	INT32_TYPE
@@ -181,7 +181,6 @@ func alsa_open(name string, channels,rate int)(* C.snd_pcm_t, error){
 }
 
 func alsa_write(device *alsa_device, data AudioData){
-	
 	c := C.snd_pcm_wait(device.pcm, 1000);
 
 	var error2 C.snd_pcm_sframes_t
@@ -200,5 +199,7 @@ func alsa_write(device *alsa_device, data AudioData){
 }
 
 func alsa_close(device *C.snd_pcm_t){
-	C.snd_pcm_close(device);
+	if device != nil{
+		C.snd_pcm_close(device)
+	}
 }
