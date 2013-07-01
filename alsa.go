@@ -4,6 +4,7 @@ package alsa
 import(
 	"errors"
 	"github.com/jcelliott/lumber"
+	"runtime"
 )
 
 /*
@@ -24,7 +25,7 @@ type AudioStream struct{
 */
 
 //Global logger (Change to adjust output..."Trace" maybe?)
-var log = lumber.NewConsoleLogger(lumber.TRACE)
+var log = lumber.NewConsoleLogger(lumber.WARN)
 
 /*
 	Functions
@@ -50,6 +51,11 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 	STREAM:
 	for{
 		select {
+		case msg,ok := <-control:
+			if !handleControlMessage(msg,ok,control){
+				log.Trace("Control chan closed")
+				break STREAM //Rash but probably safe
+			}	
 		case stream,ok := <-streamChan:
 			//Check if streamChan closed
 			if ok == false{
@@ -66,6 +72,11 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 			DATA:
 			for{
 				select {
+				case msg,ok := <-control:
+					if !handleControlMessage(msg,ok,control,){
+						log.Trace("Control chan Closed: mid data stream")
+						break STREAM //Rash but probably safe
+					}
 				case data,ok := <-stream.DataStream:
 					//Check if data stream closed
 					if ok == false{
@@ -75,25 +86,14 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 		
 					//Write data to device
 					alsa_write(&device,data)
-					
-				case msg,ok := <-control:
-					if !handleControlMessage(msg,ok,control){
-						log.Trace("Control chan Closed: mid data stream")
-						break STREAM //Rash but probably safe
-					}
+					runtime.Gosched() //Free other things to work
 				}
-			}
-		case msg,ok := <-control:
-			if !handleControlMessage(msg,ok,control){
-				log.Trace("Control chan closed")
-				break STREAM //Rash but probably safe
 			}
 		}
 	}
 	
 	//Close device after last stream
 	alsa_close(device.pcm)
-	
 	
 	log.Trace("ALSA session ended")
 }
@@ -106,11 +106,15 @@ func handleControlMessage(msg,ok bool, control <-chan bool)(bool){
 	
 	//Stall until play given
 	for !msg{
+		log.Trace("Waiting for next control send")
+		
 		msg,ok = <-control //Blocking
 		if ok == false{
 			return false
 		}
 	}
+	log.Trace("Control message handled")
+	
 	return true //clear to proceed
 }
 

@@ -116,7 +116,7 @@ package alsa
 			return NULL;
 		}
 
-		snd_pcm_sw_params_set_start_threshold(h, swp, 0);
+		r = snd_pcm_sw_params_set_start_threshold(h, swp, 0);
 
 		if (r < 0) {
 			fprintf(stderr, "audio: Unable to configure start threshold (%s)\n",
@@ -193,7 +193,12 @@ func alsa_write(device *alsa_device, data AudioData){
 	bytesPerFrame := device.channels * device.numBytes
 	numFrames := C.snd_pcm_uframes_t(len(data)/bytesPerFrame)		
 			
-	C.snd_pcm_writei(device.pcm, unsafe.Pointer(&data[0]), numFrames)
+	numWritten := C.snd_pcm_writei(device.pcm, unsafe.Pointer(&data[0]), numFrames)
+	
+	if numWritten<=0{
+		log.Warn("Alsa:Error writei");
+		C.snd_pcm_recover(device.pcm,C.int(numWritten),0)
+	}
 }
 
 func alsa_close(device *C.snd_pcm_t){
