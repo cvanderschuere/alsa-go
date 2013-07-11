@@ -115,6 +115,7 @@ package alsa
 			snd_pcm_close(h);
 			return NULL;
 		}
+		
 
 		r = snd_pcm_sw_params_set_start_threshold(h, swp, 0);
 
@@ -192,13 +193,22 @@ func alsa_write(device *alsa_device, data AudioData){
 	
 	bytesPerFrame := device.channels * device.numBytes
 	numFrames := C.snd_pcm_uframes_t(len(data)/bytesPerFrame)		
-			
 	numWritten := C.snd_pcm_writei(device.pcm, unsafe.Pointer(&data[0]), numFrames)
 	
-	if numWritten<=0{
+	switch{
+	case numWritten<=0:	
 		log.Warn("Alsa:Error writei");
 		C.snd_pcm_recover(device.pcm,C.int(numWritten),0)
+	case numWritten>0&&numWritten!=C.snd_pcm_sframes_t(numFrames):
+		log.Error("Alsa:wrote less than num frames")
 	}
+}
+
+func alsa_play(device *alsa_device){
+	C.snd_pcm_pause(device.pcm,C.int(1))
+}
+func alsa_pause(device *alsa_device){
+	C.snd_pcm_pause(device.pcm,C.int(0))
 }
 
 func alsa_close(device *C.snd_pcm_t){

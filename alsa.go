@@ -52,7 +52,7 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 	for{
 		select {
 		case msg,ok := <-control:
-			if !handleControlMessage(msg,ok,control){
+			if !handleControlMessage(msg,ok,control,nil){
 				log.Trace("Control chan closed")
 				break STREAM //Rash but probably safe
 			}	
@@ -73,7 +73,7 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 			for{
 				select {
 				case msg,ok := <-control:
-					if !handleControlMessage(msg,ok,control,){
+					if !handleControlMessage(msg,ok,control,&device){
 						log.Trace("Control chan Closed: mid data stream")
 						break STREAM //Rash but probably safe
 					}
@@ -99,9 +99,14 @@ func start(streamChan <-chan AudioStream, control <-chan bool){
 }
 
 //Returns when loop should break or continue (True: continue False: break)
-func handleControlMessage(msg,ok bool, control <-chan bool)(bool){
+func handleControlMessage(msg,ok bool, control <-chan bool, device *alsa_device)(bool){
 	if ok == false{
 		return false
+	}
+	
+	//Pause alsa device
+	if device != nil{
+		alsa_pause(device)
 	}
 	
 	//Stall until play given
@@ -114,6 +119,11 @@ func handleControlMessage(msg,ok bool, control <-chan bool)(bool){
 		}
 	}
 	log.Trace("Control message handled")
+	
+	//Resume alsa device
+	if device != nil{
+		alsa_play(device)
+	}
 	
 	return true //clear to proceed
 }
